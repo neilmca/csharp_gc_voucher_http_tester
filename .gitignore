@@ -1,0 +1,17 @@
+*.dll
+*.mp3
+*.xap
+*.cache
+*.suo
+*.user
+Thumbs.db
+*/Bin/*
+*/bin/*
+*/Obj/*
+*/obj/*
+MusicQubed/MusicQubed.Handlers/Bin/*
+MusicQubed/MusicQubed.Handlers/Obj/*
+MusicQubed/MusicQubed.Handlers/bin/*
+MusicQubed/MusicQubed.Handlers/obj/*
+/MusicQubed/SubmissionInfo/*.xml
+/MusicQubed/SubmissionInfo/*.xml

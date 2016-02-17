@@ -8,6 +8,8 @@ using System.Net;
 using System.Text;
 using System.Security.Cryptography.X509Certificates;
 using Google.Apis.Auth.OAuth2;
+using System.Net.Http.Headers;
+using System.IO;
 
 namespace HttpTester
 {
@@ -16,6 +18,7 @@ namespace HttpTester
         public string ResponseData { get; set; }
         public long DurationMS { get; set; }
         public HttpStatusCode Status { get; set; }
+        public string LocationHeader { get; set; }
     }
 
     public class CampaignInstance
@@ -24,6 +27,8 @@ namespace HttpTester
         public string Id { get; set; }
         [JsonProperty(PropertyName = "name")]
         public string Name { get; set; }
+        [JsonProperty(PropertyName = "active")]
+        public string IsActive { get; set; }
     }
 
     public class Campaigns
@@ -76,12 +81,23 @@ namespace HttpTester
 
     }
 
+    public class ExportToken
+    {
+        [JsonProperty(PropertyName = "token")]
+        public string Token { get; set; }
+    }
+
     class Program
     {
         static void Main()
         {
-            
-            if (true)
+            if(true)
+            {
+                //just reading vouchers
+                Task t = new Task(CreateEECampaign);
+                t.Start();
+            }
+            if (false)
             {
                 //just reading vouchers
                 Task t = new Task(HttpVoucherReaderTesterAsync);
@@ -99,11 +115,215 @@ namespace HttpTester
             Console.ReadLine();
         }
 
+
+        static async void CreateEECampaign()
+        {
+            var token = await GetGoogleOAuthTokenAsync();
+
+            var __PROD__ = false;
+
+            string rootlUrl ="";
+            string campaignName = "";
+            string productId = "";
+            string productName = "";
+            string redemptionUrl = "";
+            string exportBatchName = "";
+
+
+           
+
+            
+
+
+            if (__PROD__)
+            {
+                rootlUrl = "https://2-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //PROD
+                campaignName = "EE Sim Play";
+                productId = "";
+                productName = "";
+                redemptionUrl = "http://traxm.tv/e";
+            }
+            else
+            {
+                rootlUrl = "https://1-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //QA
+                campaignName = "Neil Test 1 Campaign";
+                productId = "166";
+                productName = "30 days voucher duration";
+                redemptionUrl = "http://traxm.tv/eqa";
+                //if want to just export an existing batch of vouchers then specify batch name here
+                exportBatchName = "batch2016-02-16T125025_200";
+                
+            }
+            
+
+            string url = string.Empty;
+
+            //#1 see if campaign is already created
+            string getCampaignsUrl = "communities/mtv1/campaigns?page=0&size=1000&sorting=campaignName,ASC";
+            url = rootlUrl + getCampaignsUrl;
+            var res = await DoGetRequestAsync(url, token);
+
+            var campaignsDeser = default(Campaigns);
+            if(res.Status == HttpStatusCode.OK)
+                campaignsDeser = JsonConvert.DeserializeObject<Campaigns>(res.ResponseData);
+            var totalCampaigns = campaignsDeser != null ? campaignsDeser.Total : 0;
+            Console.WriteLine("Get All Campaigns - status={0}, duration mS={1}, count = {2}", res.Status, res.DurationMS, totalCampaigns);
+            var match = campaignsDeser.AllCampaigns.Find(s => s.Name == campaignName);
+
+            var campaignId = "";
+            var batchId = "";
+            if(match!=null)
+            {
+                //campaign already exists
+                Console.WriteLine("Campaign {0} already exists. Id = {1}", match.Name, match.Id);
+                campaignId = match.Id;
+            }
+            else
+            {
+                //create a campaign
+                // #1... create campiagn
+                string postCampaignsUrl = "communities/mtv1/campaigns";
+                url = rootlUrl + postCampaignsUrl;
+
+                string postCampaignBody = @"{
+                                                  ""name"":""" + campaignName + @""",
+                                                  ""product"": {
+                                                    ""id"":""" + productId + @""",
+                                                    ""name"":""" + productName + @"""
+                                                  },
+                                                  ""community"": {
+                                                    ""id"": ""mtv1"",
+                                                    ""name"": ""mtv1 community"" 
+                                                  },
+                                                  ""redemptionUrl"":""" + redemptionUrl + @""",
+                                                  ""removeRemainingFreeTrial"" : true
+                                                }";
+
+           
+
+                var postCampaignResponse = await DoPostRequestAsync(url, postCampaignBody, token);
+
+                if (string.IsNullOrEmpty(postCampaignResponse.LocationHeader) == false)
+                {
+                    campaignId = postCampaignResponse.LocationHeader.Replace("/campaigns/", "");
+                }
+                Console.WriteLine("Create Campaign - status={0}, duration mS={1}, name = {2}, Location={3}, campaignId={4}", postCampaignResponse.Status, postCampaignResponse.DurationMS, campaignName, postCampaignResponse.LocationHeader, campaignId);
+            }
+            
+            //#2... create batch of vouchers
+            if (campaignId != string.Empty && exportBatchName == "") //only create a new batch if the batch name is not already set
+            {
+                const int batchValidPeriodDays = 6 * 30;
+                const string postBatchesBody = "{{\"name\": \"{0}\",\"generatedCodes\": {1}, \"startDate\": \"{2}\", \"endDate\": \"{3}\",\"creator\": {{ \"userName\": \"neilm\" }} }}";
+
+                
+                var noVouchersPerBatch = 200;
+                             
+
+                string postBatchesUrl = "communities/mtv1/campaigns/{0}/batches";
+                url = rootlUrl + string.Format(postBatchesUrl, campaignId);
+
+                //campaign exists, now create a batch                
+                var batchName = "batch" + DateTime.UtcNow.ToString("yyyy-MM-ddThhmmss") + "_" + noVouchersPerBatch.ToString();
+                var end = (DateTime.UtcNow.AddDays(batchValidPeriodDays)).ToString("yyyy-MM-dd");
+                var body = string.Format(postBatchesBody, batchName, noVouchersPerBatch, DateTime.UtcNow.ToString("yyyy-MM-dd"), end);
+                var postBatchResponse = await DoPostRequestAsync(url, body, token);
+                //communities/mtv1/campaigns/5738600293466112/batches/5685265389584384
+                var remove = string.Format("communities/mtv1/campaigns/{0}/batches/", campaignId);
+                batchId = postBatchResponse.LocationHeader.Replace(remove, "");
+                exportBatchName = batchName;
+                Console.WriteLine("  Post batch - status={0}, duration mS={1}, # codes created = {2}, batchId={3}, location={4}", postBatchResponse.Status, postBatchResponse.DurationMS, noVouchersPerBatch, batchId, postBatchResponse.LocationHeader);
+                
+            }
+            else if (exportBatchName != "")
+            {
+                //#3...get the batch given a name
+
+                string getBatchesUrl = "communities/mtv1/campaigns/{0}/batches?page=0&size=1000";
+
+
+                url = rootlUrl + string.Format(getBatchesUrl, campaignId);
+
+                res = await DoGetRequestAsync(url, token);
+
+                var batchesDeser = default(Batches);
+                if (res.Status == HttpStatusCode.OK)
+                    batchesDeser = JsonConvert.DeserializeObject<Batches>(res.ResponseData);
+                var totalBatches = batchesDeser != null ? batchesDeser.Total : 0;
+                Console.WriteLine("  Got All Batches - status={0}, duration mS={1}, count = {2}", res.Status, res.DurationMS, totalBatches);
+
+                var batchmatch = batchesDeser.AllBatches.Find(s => s.Name == exportBatchName);
+
+                if (batchmatch != null)
+                {
+                    //batch found
+                    Console.WriteLine("Found batch name = {0}. Id = {1}", batchmatch.Name, batchmatch.Id);
+                    batchId = batchmatch.Id;
+                }
+            }
+
+            //#3...export the batch
+            if (string.IsNullOrEmpty(batchId) != true)
+            {
+                //get token
+                var getExportTokenUrl = "communities/mtv1/campaigns/{0}/batches/{1}/vouchers/token";
+                var exportTokenUrl = rootlUrl + string.Format(getExportTokenUrl, campaignId, batchId);
+                
+                res = await DoGetRequestAsync(exportTokenUrl, token);
+                var exportTokenDeser = default(ExportToken);
+                if (res.Status == HttpStatusCode.OK)
+                {
+                    exportTokenDeser = JsonConvert.DeserializeObject<ExportToken>(res.ResponseData);
+
+                    //get voucher export list 
+                    var getExportVouchersUrl = "communities/mtv1/campaigns/{0}/batches/{1}/vouchers?token={2}";
+                    var exportVoucherUrl = rootlUrl + string.Format(getExportVouchersUrl, campaignId, batchId, exportTokenDeser.Token);
+
+                    //cannot use HttpClient for the export request as it won't let me set the Content-Type in the Header
+                    //have to use HttpWebRequest that seems to be OK with it.
+
+                    HttpWebRequest WebReq = (HttpWebRequest)WebRequest.Create(exportVoucherUrl);
+                    //This time, our method is GET.
+                    WebReq.Method = "GET";
+                    WebReq.ContentType = "text/csv";
+
+                    //From here on, it's all the same as above.
+                    HttpWebResponse WebResp = (HttpWebResponse)WebReq.GetResponse();
+                    //Let's show some information about the response
+                    Console.WriteLine(WebResp.StatusCode);
+
+                    //Now, we read the response (the string), and output it.
+                    Stream answer = WebResp.GetResponseStream();
+                    StreamReader answerSR = new StreamReader(answer);
+                    var resp = answerSR.ReadToEnd();
+                    var csv = resp.Split('\n');
+
+                    //save to file
+                    var fpath = string.Format(@"C:\Users\Neill\Downloads\{0}.csv",exportBatchName); 
+                    System.IO.File.WriteAllLines(fpath, csv);
+                    Console.WriteLine("written CSV export file to " + fpath);
+
+
+                }
+
+            }
+
+
+
+            
+
+            
+
+       }
+
+
         static async void HttpVoucherReadWriterTesterAsync()
         {
             var token = await GetGoogleOAuthTokenAsync();
             // ... Target page.
-            string rootlUrl = "https://2-dot-admin-dot-mq-vouchers-dev.appspot.com/api/";
+            //string rootlUrl = "https://2-dot-admin-dot-mq-vouchers-dev.appspot.com/api/"; //DEV
+            string rootlUrl = "https://1-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //QA
+            
             string url = string.Empty;
 
 
@@ -111,14 +331,14 @@ namespace HttpTester
             string postCampaignsUrl = "communities/mtv1/campaigns";
             url = rootlUrl + postCampaignsUrl;
 
-            const string CampaignName = "Neil Test Campaign";
+            const string CampaignName = "EE Sim Play Test Campaign";
 
 
             const string postCampaignBody = @"{
                                               ""name"":""" + CampaignName + @""",
                                               ""product"": {
-                                                ""id"": 1,
-                                                ""name"": ""Full Access 90 days""
+                                                ""id"": 166,
+                                                ""name"": ""30 days voucher duration""
                                               },
                                               ""community"": {
                                                 ""id"": ""mtv1"",
@@ -157,10 +377,7 @@ namespace HttpTester
                 //found match
 
                 var noBatchesToCreate = 1;
-                var noVouchersPerBatch = 50000;
-
-               
-
+                var noVouchersPerBatch = 10;
 
                 if (postCampaignResponse.Status == HttpStatusCode.Created || postCampaignResponse.Status == HttpStatusCode.Conflict)
                 {
@@ -188,7 +405,9 @@ namespace HttpTester
         {
             var token = await GetGoogleOAuthTokenAsync();
             // ... Target page.
-            string rootlUrl = "https://1-dot-admin-dot-mq-vouchers-dev.appspot.com/api/";
+            //string rootlUrl = "https://1-dot-admin-dot-mq-vouchers-dev.appspot.com/api/"; //DEV
+            string rootlUrl = "https://1-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //QA
+            //string rootlUrl = "https://1-dot-admin-dot-mq-vouchers.appspot.com/api/"; //PROD
             string url = string.Empty;
 
             // #1... get campiagns
@@ -211,7 +430,7 @@ namespace HttpTester
             {
                 url = rootlUrl + string.Format(getBatchesUrl, i.Id);
 
-                Console.WriteLine("Campaign = {0}", i.Name);
+                Console.WriteLine("Campaign = {0}, isActive = {1}", i.Name, i.IsActive);
                 res = await DoGetRequestAsync(url, token);
                 
                 var batchesDeser = default(Batches);
@@ -222,7 +441,7 @@ namespace HttpTester
 
                 //#3... get vouchers under each batch - ONLY getting ones with voucher count > threshold
 
-                int VoucherCountSize = 1001;
+                int VoucherCountSize = 1;
 
                 if(batchesDeser != null)
                 {
@@ -231,7 +450,7 @@ namespace HttpTester
                     {
                         url = rootlUrl + string.Format(getVouchersUrl, i.Id, batch.Id);
 
-                        if (int.Parse(batch.TotalCodes) > VoucherCountSize)
+                        if (int.Parse(batch.TotalCodes) >= VoucherCountSize)
                         {
                             Console.WriteLine("    Batch = {0}, codes in batch = {1}", i.Name, batch.TotalCodes);
                             res = await DoGetRequestAsync(url, token);
@@ -240,6 +459,26 @@ namespace HttpTester
                                 vouchersDeser = JsonConvert.DeserializeObject<Vouchers>(res.ResponseData);
                             var totalVouchers = vouchersDeser != null ? vouchersDeser.Total : 0;
                             Console.WriteLine("      Get All Vouchers - status={0}, duration mS={1}, count = {2}", res.Status, res.DurationMS, totalVouchers);
+
+                            //export voucher list
+
+                            if (totalVouchers > 0 && totalVouchers < 100) //only get small export
+                            {
+                                //get token
+                                var getExportTokenUrl = "communities/mtv1/campaigns/{0}/batches/{1}/vouchers/token";
+                                var exportTokenUrl = rootlUrl + string.Format(getExportTokenUrl, i.Id, batch.Id);
+                                res = await DoGetRequestAsync(exportTokenUrl, token);
+                                var exportTokenDeser = default(ExportToken);
+                                if (res.Status == HttpStatusCode.OK)
+                                {
+                                    exportTokenDeser = JsonConvert.DeserializeObject<ExportToken>(res.ResponseData);
+
+                                    //get voucher export list 
+                                    var getExportVouchersUrl = "communities/mtv1/campaigns/{0}/batches/{1}/vouchers?token={2}";
+                                    var exportVoucherUrl = rootlUrl + string.Format(getExportVouchersUrl, i.Id, batch.Id, exportTokenDeser.Token);
+                                    res = await DoGetRequestAsync(exportVoucherUrl, token, includeAcceptCsv:true);
+                                }
+                            }
                         }
                     }
                 }
@@ -256,7 +495,10 @@ namespace HttpTester
         static async Task<string> GetGoogleOAuthTokenAsync()
         {
             //setup ouath
-            string serviceAccountEmail = "419775333754-ge99gv2escv9mqq2gq6jhamjr59nsupl@developer.gserviceaccount.com"; //refers to my MQ Vouchers DEV
+            //string serviceAccountEmail = "419775333754-ge99gv2escv9mqq2gq6jhamjr59nsupl@developer.gserviceaccount.com"; //refers to my MQ Vouchers DEV
+            string serviceAccountEmail = "218371433014-pg0qcg9ut4ik2vepq6lp4vnveuf1oeus@developer.gserviceaccount.com"; //refers to my MQ Vouchers QA
+            //string serviceAccountEmail = "422570771885-3baroql6b5epifmrejhpauvvkqhrb2ki@developer.gserviceaccount.com"; //refers to my MQ Vouchers PROD
+            
             string O_AUTH_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 
             var certificate = new X509Certificate2(@"key.p12", "notasecret", X509KeyStorageFlags.Exportable);
@@ -275,13 +517,21 @@ namespace HttpTester
 
         }
 
-        static async Task<HttpResponseDetails> DoGetRequestAsync(string url, string oauthToken)
+        static async Task<HttpResponseDetails> DoGetRequestAsync(string url, string oauthToken, bool includeAcceptCsv = false)
         {
             using (HttpClient client = new HttpClient())
             {
                 //Console.WriteLine("GET {0}", url);
                 //add the token as HTTP Authorization header
                 client.DefaultRequestHeaders.Add("Authorization", "Bearer " + oauthToken);
+                //client.DefaultRequestHeaders.Add("Accept", "application/json");
+                //client.DefaultRequestHeaders.Add("Accept", "text/html");
+                if(includeAcceptCsv)
+                {
+                    //client.DefaultRequestHeaders.Add("Accept", "text/html");
+                    var d = client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "text/csv");
+                }
+                    
 
                 var start = DateTime.Now;
                 using (HttpResponseMessage response = await client.GetAsync(url))
@@ -323,7 +573,19 @@ namespace HttpTester
                     {
                         // ... Read the string.
                         string result = await content.ReadAsStringAsync();
-                        return new HttpResponseDetails() { ResponseData = result, DurationMS = (long)((end - start).TotalMilliseconds), Status = response.StatusCode };
+                        
+                        //get location headerif it exists
+                        HttpHeaders headers = response.Headers;
+                        IEnumerable<string> values;
+                        var location = "";
+                        if (headers.TryGetValues("Location", out values))
+                        {
+                            foreach (var val in values)
+	                        {
+                                location = val;
+	                        }
+                        }
+                        return new HttpResponseDetails() { ResponseData = result, DurationMS = (long)((end - start).TotalMilliseconds), Status = response.StatusCode, LocationHeader = location };
                     }
                 }
             }

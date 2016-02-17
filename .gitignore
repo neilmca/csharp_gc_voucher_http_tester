@@ -9,6 +9,7 @@ Thumbs.db
 */bin/*
 */Obj/*
 */obj/*
+*.p12
 MusicQubed/MusicQubed.Handlers/Bin/*
 MusicQubed/MusicQubed.Handlers/Obj/*
 MusicQubed/MusicQubed.Handlers/bin/*

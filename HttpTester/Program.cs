@@ -128,11 +128,13 @@ namespace HttpTester
             string productName = "";
             string redemptionUrl = "";
             string exportBatchName = "";
+            string removeRemainingFreeTrial = "";
+            int noVouchersPerBatch = 0;
+            int batchValidPeriodDays = 0;
 
 
-           
 
-            
+
 
 
             if (__PROD__)
@@ -142,17 +144,24 @@ namespace HttpTester
                 productId = "";
                 productName = "";
                 redemptionUrl = "http://traxm.tv/e";
+                //if want to just export an existing batch of vouchers then specify batch name here
+                exportBatchName = "batch2016-02-16T125025_200";
+                removeRemainingFreeTrial = "true";
+                noVouchersPerBatch = 200;
+                batchValidPeriodDays = 6 * 30;
             }
             else
             {
                 rootlUrl = "https://1-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //QA
-                campaignName = "Neil Test 1 Campaign";
+                campaignName = "Neil Test Campaign 2";
                 productId = "166";
                 productName = "30 days voucher duration";
-                redemptionUrl = "http://traxm.tv/eqa";
+                redemptionUrl = "http://traxm.tv/a";
                 //if want to just export an existing batch of vouchers then specify batch name here
-                exportBatchName = "batch2016-02-16T125025_200";
-                
+                //exportBatchName = "batch2016-02-19T012716_200";
+                removeRemainingFreeTrial = "false";
+                noVouchersPerBatch = 200;
+                batchValidPeriodDays = 6 * 30;
             }
             
 
@@ -196,8 +205,8 @@ namespace HttpTester
                                                     ""name"": ""mtv1 community"" 
                                                   },
                                                   ""redemptionUrl"":""" + redemptionUrl + @""",
-                                                  ""removeRemainingFreeTrial"" : true
-                                                }";
+                                                  ""removeRemainingFreeTrial"" :" + removeRemainingFreeTrial +
+                                                "}";
 
            
 
@@ -205,7 +214,7 @@ namespace HttpTester
 
                 if (string.IsNullOrEmpty(postCampaignResponse.LocationHeader) == false)
                 {
-                    campaignId = postCampaignResponse.LocationHeader.Replace("/campaigns/", "");
+                    campaignId = postCampaignResponse.LocationHeader.Replace("communities/mtv1/campaigns/", "");
                 }
                 Console.WriteLine("Create Campaign - status={0}, duration mS={1}, name = {2}, Location={3}, campaignId={4}", postCampaignResponse.Status, postCampaignResponse.DurationMS, campaignName, postCampaignResponse.LocationHeader, campaignId);
             }
@@ -213,12 +222,7 @@ namespace HttpTester
             //#2... create batch of vouchers
             if (campaignId != string.Empty && exportBatchName == "") //only create a new batch if the batch name is not already set
             {
-                const int batchValidPeriodDays = 6 * 30;
                 const string postBatchesBody = "{{\"name\": \"{0}\",\"generatedCodes\": {1}, \"startDate\": \"{2}\", \"endDate\": \"{3}\",\"creator\": {{ \"userName\": \"neilm\" }} }}";
-
-                
-                var noVouchersPerBatch = 200;
-                             
 
                 string postBatchesUrl = "communities/mtv1/campaigns/{0}/batches";
                 url = rootlUrl + string.Format(postBatchesUrl, campaignId);
@@ -231,9 +235,8 @@ namespace HttpTester
                 //communities/mtv1/campaigns/5738600293466112/batches/5685265389584384
                 var remove = string.Format("communities/mtv1/campaigns/{0}/batches/", campaignId);
                 batchId = postBatchResponse.LocationHeader.Replace(remove, "");
-                exportBatchName = batchName;
-                Console.WriteLine("  Post batch - status={0}, duration mS={1}, # codes created = {2}, batchId={3}, location={4}", postBatchResponse.Status, postBatchResponse.DurationMS, noVouchersPerBatch, batchId, postBatchResponse.LocationHeader);
-                
+                Console.WriteLine("  Post batch - status={0}, duration mS={1}, # codes created = {2}, batchId={3}, location={4}, batch name={5}", postBatchResponse.Status, postBatchResponse.DurationMS, noVouchersPerBatch, batchId, postBatchResponse.LocationHeader, batchName);
+                batchId = string.Empty; //don't export batch immediately after creation as will fail because batch still being generated
             }
             else if (exportBatchName != "")
             {
@@ -299,7 +302,7 @@ namespace HttpTester
                     var csv = resp.Split('\n');
 
                     //save to file
-                    var fpath = string.Format(@"C:\Users\Neill\Downloads\{0}.csv",exportBatchName); 
+                    var fpath = string.Format(@"C:\Users\Neil\Downloads\{0}.csv",exportBatchName); 
                     System.IO.File.WriteAllLines(fpath, csv);
                     Console.WriteLine("written CSV export file to " + fpath);
 

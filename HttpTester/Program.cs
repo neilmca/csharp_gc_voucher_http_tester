@@ -120,7 +120,7 @@ namespace HttpTester
         {
             var token = await GetGoogleOAuthTokenAsync();
 
-            var __PROD__ = false;
+            var __PROD__ = true;
 
             string rootlUrl ="";
             string campaignName = "";
@@ -130,25 +130,27 @@ namespace HttpTester
             string exportBatchName = "";
             string removeRemainingFreeTrial = "";
             int noVouchersPerBatch = 0;
-            int batchValidPeriodDays = 0;
-
-
+            DateTime batchStartDate = DateTime.Now;
+            DateTime batchEndDate = DateTime.Now;
+            string batchPrefix = "";
 
 
 
 
             if (__PROD__)
             {
-                rootlUrl = "https://2-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //PROD
-                campaignName = "EE Sim Play";
-                productId = "";
-                productName = "";
-                redemptionUrl = "http://traxm.tv/e";
+                rootlUrl = "https://2-dot-admin-dot-mq-vouchers.appspot.com/api/"; //PROD
+                campaignName = "EE Mtv Trax Sim Play Bundle";
+                productId = "416";
+                productName = "32 days voucher duration";
+                redemptionUrl = "http://traxm.tv/ee";
                 //if want to just export an existing batch of vouchers then specify batch name here
-                exportBatchName = "batch2016-02-16T125025_200";
+                exportBatchName = "prod_batch2016-02-23T013054_3500";
                 removeRemainingFreeTrial = "true";
-                noVouchersPerBatch = 200;
-                batchValidPeriodDays = 6 * 30;
+                noVouchersPerBatch = 3500;
+                batchStartDate = new DateTime(2016, 2, 28);
+                batchEndDate = batchStartDate.AddMonths(4);
+                batchPrefix = "prod_";
             }
             else
             {
@@ -158,10 +160,12 @@ namespace HttpTester
                 productName = "30 days voucher duration";
                 redemptionUrl = "http://traxm.tv/a";
                 //if want to just export an existing batch of vouchers then specify batch name here
-                //exportBatchName = "batch2016-02-19T012716_200";
-                removeRemainingFreeTrial = "false";
-                noVouchersPerBatch = 200;
-                batchValidPeriodDays = 6 * 30;
+                exportBatchName = "batch2016-02-23T111033_20";
+                removeRemainingFreeTrial = "true";
+                noVouchersPerBatch = 20;
+                batchStartDate = new DateTime(2016, 2, 23);
+                batchEndDate = batchStartDate.AddDays(1);
+                batchPrefix = "qa_";
             }
             
 
@@ -222,17 +226,19 @@ namespace HttpTester
             //#2... create batch of vouchers
             if (campaignId != string.Empty && exportBatchName == "") //only create a new batch if the batch name is not already set
             {
-                const string postBatchesBody = "{{\"name\": \"{0}\",\"generatedCodes\": {1}, \"startDate\": \"{2}\", \"endDate\": \"{3}\",\"creator\": {{ \"userName\": \"neilm\" }} }}";
+                const string postBatchesBody = "{{\"name\": \"{0}\",\"generatedCodes\": {1}, \"startDate\": \"{2}\", \"endDate\": \"{3}\",\"creator\": {{ \"userName\": \"neil.mcalpine@musicqubed.com\" }} }}";
 
                 string postBatchesUrl = "communities/mtv1/campaigns/{0}/batches";
                 url = rootlUrl + string.Format(postBatchesUrl, campaignId);
 
+                var start = batchStartDate.ToString("yyy-MM-dd");
+                var end = batchEndDate.ToString("yyy-MM-dd");
+
                 //campaign exists, now create a batch                
-                var batchName = "batch" + DateTime.UtcNow.ToString("yyyy-MM-ddThhmmss") + "_" + noVouchersPerBatch.ToString();
-                var end = (DateTime.UtcNow.AddDays(batchValidPeriodDays)).ToString("yyyy-MM-dd");
-                var body = string.Format(postBatchesBody, batchName, noVouchersPerBatch, DateTime.UtcNow.ToString("yyyy-MM-dd"), end);
+                var batchName = batchPrefix + "batch" + DateTime.UtcNow.ToString("yyyy-MM-ddThhmmss") + "_" + noVouchersPerBatch.ToString();
+                var body = string.Format(postBatchesBody, batchName, noVouchersPerBatch, start, end);
                 var postBatchResponse = await DoPostRequestAsync(url, body, token);
-                //communities/mtv1/campaigns/5738600293466112/batches/5685265389584384
+                
                 var remove = string.Format("communities/mtv1/campaigns/{0}/batches/", campaignId);
                 batchId = postBatchResponse.LocationHeader.Replace(remove, "");
                 Console.WriteLine("  Post batch - status={0}, duration mS={1}, # codes created = {2}, batchId={3}, location={4}, batch name={5}", postBatchResponse.Status, postBatchResponse.DurationMS, noVouchersPerBatch, batchId, postBatchResponse.LocationHeader, batchName);
@@ -499,8 +505,8 @@ namespace HttpTester
         {
             //setup ouath
             //string serviceAccountEmail = "419775333754-ge99gv2escv9mqq2gq6jhamjr59nsupl@developer.gserviceaccount.com"; //refers to my MQ Vouchers DEV
-            string serviceAccountEmail = "218371433014-pg0qcg9ut4ik2vepq6lp4vnveuf1oeus@developer.gserviceaccount.com"; //refers to my MQ Vouchers QA
-            //string serviceAccountEmail = "422570771885-3baroql6b5epifmrejhpauvvkqhrb2ki@developer.gserviceaccount.com"; //refers to my MQ Vouchers PROD
+            //string serviceAccountEmail = "218371433014-pg0qcg9ut4ik2vepq6lp4vnveuf1oeus@developer.gserviceaccount.com"; //refers to my MQ Vouchers QA
+            string serviceAccountEmail = "422570771885-3baroql6b5epifmrejhpauvvkqhrb2ki@developer.gserviceaccount.com"; //refers to my MQ Vouchers PROD
             
             string O_AUTH_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 

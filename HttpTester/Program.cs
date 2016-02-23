@@ -120,7 +120,7 @@ namespace HttpTester
         {
             var token = await GetGoogleOAuthTokenAsync();
 
-            var __PROD__ = true;
+            var __PROD__ = false;
 
             string rootlUrl ="";
             string campaignName = "";

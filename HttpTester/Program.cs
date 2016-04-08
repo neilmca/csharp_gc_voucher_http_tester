@@ -91,6 +91,13 @@ namespace HttpTester
     {
         static void Main()
         {
+            if(false)
+            {
+                Task t = new Task(PIAChecker);
+                t.Start();
+                
+            }
+
             if(true)
             {
                 //just reading vouchers
@@ -115,12 +122,39 @@ namespace HttpTester
             Console.ReadLine();
         }
 
+        static async void PIAChecker()
+        {
+            string serviceAccountEmail = "ee-integrator-prod@appspot.gserviceaccount.com"; //refers to my MQ Vouchers PROD
 
-        static async void CreateEECampaign()
+            string O_AUTH_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
+
+            var certificate = new X509Certificate2(@"key_pia.p12", "notasecret", X509KeyStorageFlags.Exportable);
+
+            ServiceAccountCredential credential = new ServiceAccountCredential(
+               new ServiceAccountCredential.Initializer(serviceAccountEmail)
+               {
+                   Scopes = new[] { O_AUTH_EMAIL_SCOPE }
+               }.FromCertificate(certificate));
+
+
+
+            //var done = await credential.RequestAccessTokenAsync(new System.Threading.CancellationToken());
+            var token = await credential.GetAccessTokenForRequestAsync();
+
+            //POST
+
+            var url = "https://1-dot-ee-integrator-prod.appspot.com/api/msisdns";
+            string body = @"{""msisdn"" :  ""447825256123""}";
+
+            var res = await DoPostRequestAsync(url, body, token);
+
+        }
+
+            static async void CreateEECampaign()
         {
             var token = await GetGoogleOAuthTokenAsync();
 
-            var __PROD__ = false;
+            var __PROD__ = true;
 
             string rootlUrl ="";
             string campaignName = "";
@@ -145,26 +179,27 @@ namespace HttpTester
                 productName = "32 days voucher duration";
                 redemptionUrl = "http://traxm.tv/ee";
                 //if want to just export an existing batch of vouchers then specify batch name here
-                exportBatchName = "prod_batch2016-02-23T013054_3500";
+                exportBatchName = "prod_batch2016-03-24T114825_100";
                 removeRemainingFreeTrial = "true";
-                noVouchersPerBatch = 3500;
-                batchStartDate = new DateTime(2016, 2, 28);
-                batchEndDate = batchStartDate.AddMonths(4);
+                noVouchersPerBatch = 100;
+                batchStartDate = new DateTime(2016, 3, 21);
+                batchEndDate = batchStartDate.AddYears(5);
+                //batchEndDate = batchStartDate.AddDays(1);
                 batchPrefix = "prod_";
             }
             else
             {
                 rootlUrl = "https://1-dot-admin-dot-mq-vouchers-qa.appspot.com/api/"; //QA
-                campaignName = "Neil Test Campaign 2";
+                campaignName = "Neil Test Campaign 3";
                 productId = "166";
                 productName = "30 days voucher duration";
                 redemptionUrl = "http://traxm.tv/a";
                 //if want to just export an existing batch of vouchers then specify batch name here
-                exportBatchName = "batch2016-02-23T111033_20";
+                exportBatchName = "qa_batch2016-03-10T121249_50";
                 removeRemainingFreeTrial = "true";
-                noVouchersPerBatch = 20;
+                noVouchersPerBatch = 50;
                 batchStartDate = new DateTime(2016, 2, 23);
-                batchEndDate = batchStartDate.AddDays(1);
+                batchEndDate = batchStartDate.AddDays(60);
                 batchPrefix = "qa_";
             }
             
